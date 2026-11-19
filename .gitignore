@@ -1,0 +1,10 @@
+vivado_proj/
+
+*.jou
+*.log
+*.str
+*.dmp
+*.bit
+*.bin
+*.ltx
+.Xil/
