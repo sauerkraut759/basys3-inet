@@ -54,6 +54,7 @@ module inet_graph_engine #(
             partner_p = port[i][P_MAIN][1:0];
             if (node_type[i] != T_EMPTY
             &&  partner_p == P_MAIN
+            &&  partner != i[6:2]
             &&  node_type[partner] != T_EMPTY
             &&  port[partner][P_MAIN] == ptr(i[4:0], P_MAIN)) begin
                 is_active[i] = 1'b1;
@@ -62,5 +63,9 @@ module inet_graph_engine #(
             end
         end
     end
+    
+    reg [N_NODES-1:0] can_reduce; // Mascara para arbitraje para evitar corrupcion de punteros
+    
+    always @(*) begin
         
 endmodule
