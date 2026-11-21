@@ -58,15 +58,17 @@ module inet_graph_engine #(
     // el nodo 'i' forma un par activo con el nodo 'j' si port[i][MAIN] apunta a {j, P_MAIN}
     // y viceversa
     reg [N_EDGES-1:0] is_active;
-    reg [4:0] id_L, id_R;
-    reg [1:0] p_L, p_R;
+    
+    
     
     always @(*) begin : active_pair_detection
         integer i;
+        reg [4:0] id_L, id_R;
+        reg [1:0] p_L, p_R;
         for (i = 0; i < N_EDGES; i = i + 1) begin
             p_L = edges[i][13:12];
-            p_R = edges[i][11:7];
-            id_L = edges[i][6:5];
+            p_R = edges[i][6:5];
+            id_L = edges[i][11:7];
             id_R = edges[i][4:0];
             
             if (p_L == P_MAIN
@@ -77,6 +79,47 @@ module inet_graph_engine #(
                 is_active[i] = 1'b1;
             end else begin
                 is_active[i] = 1'b0;
+            end
+        end
+    end
+    
+    always @(*) begin: compute_next_state
+        integer i;
+        reg [4:0] id_A, id_B;
+        reg [2:0] type_L, type_R;
+        reg [20:0] node_A, node_B;
+        reg [5:0] aux1_A, aux2_A;
+        // valores por defecto para evitar latches
+        for (i = 0; i < N_EDGES; i = i + 1) begin
+            next_edges[i] = edges[i];
+        end
+        for (i = 0; i < N_NODES; i = i + 1) begin
+            next_nodes[i] = nodes[i];
+        end
+        
+        for (i = 0; i < N_EDGES; i = i + 1) begin
+            type_L = nodes[edges[i][11:7]][20:18];
+            type_R = nodes[edges[i][4:0]][20:18];
+            if (is_active[i]) begin
+                id_A = (type_L == T_IO || type_L == T_ADD) ? edges[i][11:7] : edges[i][4:0];
+                id_B = (type_L == T_IO || type_L == T_ADD) ? edges[i][4:0] : edges[i][11:7];
+                node_A = nodes[id_A];
+                node_B = nodes[id_B];
+                
+                aux1_A = node_A[11:6];
+                aux2_A = node_A[5:0];
+                
+                if (node_A[20:18] == T_ADD && node_B[20:18] == T_Z) begin
+                    if (is_active[aux1_A])
+                end
+                
+            end else begin
+                id_A = edges[i][11:7];
+                id_B = edges[i][4:0];
+                node_A = nodes[id_A];
+                node_B = nodes[id_B];
+                aux1_A = node_A[11:6];
+                aux2_A = node_A[5:0];
             end
         end
     end
