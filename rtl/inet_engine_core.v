@@ -90,7 +90,6 @@ module inet_graph_engine #(
     
     reg [5:0] delta_reductions;
     reg [3:0] delta_result;
-    reg       next_done;
     
     always @(*) begin : compute_next_state
         integer i;
@@ -109,7 +108,6 @@ module inet_graph_engine #(
         
         delta_reductions = 6'd0;
         delta_result = 4'd0;
-        next_done = 1'b0;
         
         id_L = 5'd0; id_R = 5'd0; id_A = 5'd0; id_B = 5'd0; id_X = 5'd0;
         type_L = 3'd0; type_R = 3'd0; type_A = 3'd0; type_B = 3'd0;
@@ -246,13 +244,41 @@ module inet_graph_engine #(
                     next_edges[i] = 14'd0;
                     next_nodes[id_B] = 21'd0;
                     
-                    next_done = 1'b1;
                     delta_reductions = delta_reductions + 6'd1;
                 end
             end
         end
     end
     
+    assign done = ~(|is_active); // listo cuando no hay pares activos
     
+    // limpiar, cargar grafo y commit del estado t+1
+    always @(posedge clk) begin: state_update
+        integer i;
+        
+        if (rst) begin
+            for (i = 0; i < N_EDGES; i = i + 1) begin
+                next_edges[i] = edges[i];
+            end
+            for (i = 0; i < N_NODES; i = i + 1) begin
+                next_nodes[i] = nodes[i];
+            end
+            
+            total_reductions <= 8'd0;
+            cycles_taken <= 8'd0;
+            result_value <= 4'd0;
+        end else if (!done) begin
+            for (i = 0; i < N_EDGES; i = i + 1) begin
+                edges[i] <= next_edges[i];
+            end
+            for (i = 0; i < N_NODES; i = i + 1) begin
+                nodes[i] <= next_nodes[i];
+            end
+            
+            total_reductions <= total_reductions + delta_reductions;
+            result_value <= result_value + delta_result;
+            cycles_taken <= cycles_taken + 8'd1;
+        end
+    end
         
 endmodule
