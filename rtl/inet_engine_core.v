@@ -48,11 +48,6 @@ module inet_graph_engine #(
     reg [13:0] next_edges [0:N_EDGES-1]; 
     reg [20:0] next_nodes [0:N_NODES-1];
     
-    // funcion para empaquetar un nodo y un puerto en un puntero
-    function [6:0] ptr(input [1:0] p, input [4:0] n);
-        ptr = {p,n};
-    endfunction
-    
     /* el nodo 'i' forma un par activo con el nodo 'j' si port[i][MAIN] apunta a {j, P_MAIN}
      * y viceversa
      */
@@ -163,18 +158,20 @@ module inet_graph_engine #(
                     id_B = id_L;
                     type_B = type_L;
                 end
+
+                 /* Al reescribir los bits de una arista la
+                 * escritura debe hacerse exactamente en
+                 * el extremo donde se encontraba el elemento a
+                 * reemplazar para evitar errores cuando se
+                 * reduzcan multiples pares activos conectados
+                 */
                 
                 // Regla 1: ADD >< S
                 if (type_A == T_ADD && type_B == T_S) begin
                     e_out = nodes[id_A][5:0]; // A.AUX2 (arista resultado)
                     e_pred = nodes[id_B][11:6]; // B.AUX1 (arista antecesor)
                     
-                    /* Al reescribir los bits de una arista la
-                     * escritura debe hacerse exactamente en
-                     * el extremo donde se encontraba el elemento a
-                     * reemplazar para evitar errores cuando se
-                     * reduzcan multiples pares activos conectados
-                     */
+                   
                      
                     // B toma el lugar de A.AUX2 en e_out
                     if (edges[e_out][13:7] == {P_AUX2, id_A}) begin
