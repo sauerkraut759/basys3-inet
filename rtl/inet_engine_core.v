@@ -5,7 +5,6 @@ module inet_graph_engine #(
 )(
     input wire       clk,
     input wire       rst,
-    input wire       start_demo,
     output reg [7:0] result_value,
     output reg [7:0] cycles_taken,
     output reg [7:0] total_reductions,
@@ -92,7 +91,11 @@ module inet_graph_engine #(
     reg [3:0] delta_result;
     
     always @(*) begin : compute_next_state
-        integer i;
+        integer i, k;
+        reg [5:0] active_idx[0:3];
+        reg [3:0] active_valid;
+        reg [5:0] e_idx;
+        
         reg [4:0] id_L, id_R, id_A, id_B, id_X;
         reg [2:0] type_L, type_R, type_A, type_B;
         reg [5:0] e_out, e_pred, e_aux1, e_next;
@@ -109,16 +112,42 @@ module inet_graph_engine #(
         delta_reductions = 6'd0;
         delta_result = 4'd0;
         
+        // Encoder de prioridad, elegir maximo 4 aristas activas por ciclo
+        active_valid = 4'd0;
+        active_idx[0] = 6'd0;
+        active_idx[1] = 6'd0;
+        active_idx[2] = 6'd0;
+        active_idx[3] = 6'd0;
+        
+        for (i = 0; i < N_EDGES; i = i + 1) begin
+            if (is_active[i]) begin
+                if (!active_valid[0]) begin
+                    active_idx[0]   = i[5:0];
+                    active_valid[0] = 1'b1;
+                end else if (!active_valid[1]) begin
+                    active_idx[1]   = i[5:0];
+                    active_valid[1] = 1'b1;
+                end else if (!active_valid[2]) begin
+                    active_idx[2]   = i[5:0];
+                    active_valid[2] = 1'b1;
+                end else if (!active_valid[3]) begin
+                    active_idx[3]   = i[5:0];
+                    active_valid[3] = 1'b1;
+                end
+            end
+        end
+        
         id_L = 5'd0; id_R = 5'd0; id_A = 5'd0; id_B = 5'd0; id_X = 5'd0;
         type_L = 3'd0; type_R = 3'd0; type_A = 3'd0; type_B = 3'd0;
         e_out  = 6'd0; e_pred = 6'd0; e_aux1 = 6'd0; e_next = 6'd0;
         p_X    = 2'd0;
         
         // Evaluacion paralela sobre todas las aristas activas
-        for (i = 0; i < N_EDGES; i = i + 1) begin
-            if (is_active[i]) begin
-                id_L = edges[i][11:7];
-                id_R = edges[i][4:0];
+        for (k = 0; k < 4; k = k + 1) begin
+            if (active_valid[k]) begin
+                e_idx = active_idx[k];
+                id_L = edges[e_idx][11:7];
+                id_R = edges[e_idx][4:0];
                 type_L = nodes[id_L][20:18];
                 type_R = nodes[id_R][20:18];
                 
@@ -164,9 +193,9 @@ module inet_graph_engine #(
                     next_nodes[id_A][17:12] = e_pred;
                     
                     // La arista i se reutiliza para el enlace interno A.AUX2 - B.AUX1
-                    next_edges[i] = {P_AUX2, id_A, P_AUX1, id_B};
-                    next_nodes[id_A][5:0] = i[5:0];
-                    next_nodes[id_B][11:6] = i[5:0];
+                    next_edges[e_idx] = {P_AUX2, id_A, P_AUX1, id_B};
+                    next_nodes[id_A][5:0] = e_idx;
+                    next_nodes[id_B][11:6] = e_idx;
                     
                     delta_reductions = delta_reductions + 6'd1;
                 end
@@ -210,7 +239,7 @@ module inet_graph_engine #(
                         endcase
                     
                         // Limpiar nodos A, B y aristas i, e_aux1
-                        next_edges[i] = 14'd0;
+                        next_edges[e_idx] = 14'd0;
                         next_edges[e_aux1] = 14'd0;
                         next_nodes[id_A] = 21'd0;
                         next_nodes[id_B] = 21'd0;
@@ -233,7 +262,7 @@ module inet_graph_engine #(
                     // Reemplaza P_MAIN en IO por e_next
                     next_nodes[id_A][17:12] = e_next;
                     // Limpiar arista i y nodo S
-                    next_edges[i] = 14'd0;
+                    next_edges[e_idx] = 14'd0;
                     next_nodes[id_B] = 21'd0;
                     
                     delta_result = delta_result + 4'd1;
@@ -243,7 +272,7 @@ module inet_graph_engine #(
                 // Regla 4: IO >< Z (FIN)
                 else if (type_A == T_IO && type_B == T_Z) begin
                     next_nodes[id_A][17:12] = 6'd0;
-                    next_edges[i] = 14'd0;
+                    next_edges[e_idx] = 14'd0;
                     next_nodes[id_B] = 21'd0;
                     
                     delta_reductions = delta_reductions + 6'd1;
@@ -253,6 +282,29 @@ module inet_graph_engine #(
     end
     
     assign done = ~(|is_active); // listo cuando no hay pares activos
+    
+    // Tasks auxiliares para inyectar el grafo (en reset) de forma legible
+    task set_node;
+        input [4:0] id;
+        input [2:0] ntype;
+        input [5:0] e_main;
+        input [5:0] e_aux1;
+        input [5:0] e_aux2;
+        begin
+            nodes[id] <= {ntype, e_main, e_aux1, e_aux2};
+        end
+    endtask
+
+    task set_edge;
+        input [5:0] eid;
+        input [1:0] pL;
+        input [4:0] idL;
+        input [1:0] pR;
+        input [4:0] idR;
+        begin
+            edges[eid] <= {pL, idL, pR, idR};
+        end
+    endtask
     
     // limpiar, cargar grafo y commit del estado t+1
     always @(posedge clk) begin: state_update
@@ -269,6 +321,55 @@ module inet_graph_engine #(
             total_reductions <= 8'd0;
             cycles_taken <= 8'd0;
             result_value <= 8'd0;
+            
+            set_node(5'd0,  T_IO,  6'd0,  6'd0,  6'd0); // IO
+            set_node(5'd1,  T_ADD, 6'd1,  6'd2,  6'd0); // ADD_root
+            set_node(5'd2,  T_ADD, 6'd3,  6'd5,  6'd1); // ADD_left  (1 + 2)
+            set_node(5'd3,  T_ADD, 6'd8,  6'd12, 6'd2); // ADD_right (3 + 4)
+
+            // Número 1 (S -> Z)
+            set_node(5'd4,  T_S,   6'd3,  6'd4,  6'd0);
+            set_node(5'd5,  T_Z,   6'd4,  6'd0,  6'd0);
+
+            // Número 2 (S -> S -> Z)
+            set_node(5'd6,  T_S,   6'd5,  6'd6,  6'd0);
+            set_node(5'd7,  T_S,   6'd6,  6'd7,  6'd0);
+            set_node(5'd8,  T_Z,   6'd7,  6'd0,  6'd0);
+
+            // Número 3 (S -> S -> S -> Z)
+            set_node(5'd9,  T_S,   6'd8,  6'd9,  6'd0);
+            set_node(5'd10, T_S,   6'd9,  6'd10, 6'd0);
+            set_node(5'd11, T_S,   6'd10, 6'd11, 6'd0);
+            set_node(5'd12, T_Z,   6'd11, 6'd0,  6'd0);
+
+            // Número 4 (S -> S -> S -> S -> Z)
+            set_node(5'd13, T_S,   6'd12, 6'd13, 6'd0);
+            set_node(5'd14, T_S,   6'd13, 6'd14, 6'd0);
+            set_node(5'd15, T_S,   6'd14, 6'd15, 6'd0);
+            set_node(5'd16, T_S,   6'd15, 6'd16, 6'd0);
+            set_node(5'd17, T_Z,   6'd16, 6'd0,  6'd0);
+
+            // Aristas: set_edge(eid, port_L, id_L, port_R, id_R)
+            set_edge(6'd0,  P_MAIN, 5'd0,  P_AUX2, 5'd1);  // IO <-> ADD_root.out
+            set_edge(6'd1,  P_MAIN, 5'd1,  P_AUX2, 5'd2);  // ADD_root.in1 <-> ADD_left.out
+            set_edge(6'd2,  P_AUX1, 5'd1,  P_AUX2, 5'd3);  // ADD_root.in2 <-> ADD_right.out
+
+            set_edge(6'd3,  P_MAIN, 5'd2,  P_MAIN, 5'd4);  // ADD_left.in1 <-> 1 [ACTIVO]
+            set_edge(6'd4,  P_AUX1, 5'd4,  P_MAIN, 5'd5);
+            set_edge(6'd5,  P_AUX1, 5'd2,  P_MAIN, 5'd6);  // ADD_left.in2 <-> 2
+            set_edge(6'd6,  P_AUX1, 5'd6,  P_MAIN, 5'd7);
+            set_edge(6'd7,  P_AUX1, 5'd7,  P_MAIN, 5'd8);
+
+            set_edge(6'd8,  P_MAIN, 5'd3,  P_MAIN, 5'd9);  // ADD_right.in1 <-> 3 [ACTIVO]
+            set_edge(6'd9,  P_AUX1, 5'd9,  P_MAIN, 5'd10);
+            set_edge(6'd10, P_AUX1, 5'd10, P_MAIN, 5'd11);
+            set_edge(6'd11, P_AUX1, 5'd11, P_MAIN, 5'd12);
+            set_edge(6'd12, P_AUX1, 5'd3,  P_MAIN, 5'd13); // ADD_right.in2 <-> 4
+            set_edge(6'd13, P_AUX1, 5'd13, P_MAIN, 5'd14);
+            set_edge(6'd14, P_AUX1, 5'd14, P_MAIN, 5'd15);
+            set_edge(6'd15, P_AUX1, 5'd15, P_MAIN, 5'd16);
+            set_edge(6'd16, P_AUX1, 5'd16, P_MAIN, 5'd17);
+
         end else if (!done) begin
             for (i = 0; i < N_EDGES; i = i + 1) begin
                 edges[i] <= next_edges[i];
