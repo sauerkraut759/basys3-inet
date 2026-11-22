@@ -111,7 +111,7 @@ module inet_graph_engine #(
         
         id_L = 5'd0; id_R = 5'd0; id_A = 5'd0; id_B = 5'd0; id_X = 5'd0;
         type_L = 3'd0; type_R = 3'd0; type_A = 3'd0; type_B = 3'd0;
-        e_out  = 5'd0; e_pred = 5'd0; e_aux1 = 5'd0; e_next = 5'd0;
+        e_out  = 6'd0; e_pred = 6'd0; e_aux1 = 6'd0; e_next = 6'd0;
         p_X    = 2'd0;
         
         // Evaluacion paralela sobre todas las aristas activas
@@ -137,7 +137,7 @@ module inet_graph_engine #(
                 
                 // Regla 1: ADD >< S
                 if (type_A == T_ADD && type_B == T_S) begin
-                    e_out = nodes[id_A][5:1]; // A.AUX2 (arista resultado)
+                    e_out = nodes[id_A][5:0]; // A.AUX2 (arista resultado)
                     e_pred = nodes[id_B][11:6]; // B.AUX1 (arista antecesor)
                     
                     /* Al reescribir los bits de una arista la
@@ -153,6 +153,7 @@ module inet_graph_engine #(
                     end else begin
                         next_edges[e_out][6:0] = {P_MAIN, id_B};
                     end
+                    next_nodes[id_B][17:12] = e_out;
                     
                     // A toma el lugar de B.AUX1 en e_pred
                     if (edges[e_pred][13:7] == {P_AUX1, id_B}) begin
@@ -160,11 +161,12 @@ module inet_graph_engine #(
                     end else begin
                         next_edges[e_pred][6:0] = {P_MAIN, id_A};
                     end
+                    next_nodes[id_A][17:12] = e_pred;
                     
                     // La arista i se reutiliza para el enlace interno A.AUX2 - B.AUX1
                     next_edges[i] = {P_AUX2, id_A, P_AUX1, id_B};
                     next_nodes[id_A][5:0] = i[5:0];
-                    next_nodes[id_B][5:0] = i[5:0];
+                    next_nodes[id_B][11:6] = i[5:0];
                     
                     delta_reductions = delta_reductions + 6'd1;
                 end
@@ -258,15 +260,15 @@ module inet_graph_engine #(
         
         if (rst) begin
             for (i = 0; i < N_EDGES; i = i + 1) begin
-                next_edges[i] = edges[i];
+                edges[i] <= 14'd0;
             end
             for (i = 0; i < N_NODES; i = i + 1) begin
-                next_nodes[i] = nodes[i];
+                nodes[i] <= 21'd0; 
             end
             
             total_reductions <= 8'd0;
             cycles_taken <= 8'd0;
-            result_value <= 4'd0;
+            result_value <= 8'd0;
         end else if (!done) begin
             for (i = 0; i < N_EDGES; i = i + 1) begin
                 edges[i] <= next_edges[i];
